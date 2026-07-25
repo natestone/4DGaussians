@@ -8,6 +8,12 @@
 #
 # For inquiries contact  george.drettakis@inria.fr
 #
+# RaceColumn Metal port (M3.5): route 4DGaussians' hard-coded CUDA calls to
+# Apple MPS. Must precede every import that touches the device. Provided by
+# scripts/mps-shims/mps-compat (pip install -e). See
+# 4dgs-metal-rasterizer/docs/M3_ROADMAP.md §M3.5.
+import mps_compat  # noqa: F401  (side-effecting: patches torch for MPS)
+
 import numpy as np
 import random
 import os, sys
@@ -200,7 +206,7 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         # breakpoint()
         Ll1 = l1_loss(image_tensor, gt_image_tensor[:,:3,:,:])
 
-        psnr_ = psnr(image_tensor, gt_image_tensor).mean().double()
+        psnr_ = psnr(image_tensor, gt_image_tensor).mean().float()  # RaceColumn: MPS has no float64
         # norm
         
 
@@ -363,10 +369,10 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                                 tb_writer.add_images(stage + "/"+config['name'] + "_view_{}/ground_truth".format(viewpoint.image_name), gt_image[None], global_step=iteration)
                     except:
                         pass
-                    l1_test += l1_loss(image, gt_image).mean().double()
+                    l1_test += l1_loss(image, gt_image).mean().float()  # RaceColumn: MPS has no float64
                     # mask=viewpoint.mask
                     
-                    psnr_test += psnr(image, gt_image, mask=None).mean().double()
+                    psnr_test += psnr(image, gt_image, mask=None).mean().float()  # RaceColumn: MPS has no float64
                 psnr_test /= len(config['cameras'])
                 l1_test /= len(config['cameras'])          
                 print("\n[ITER {}] Evaluating {}: L1 {} PSNR {}".format(iteration, config['name'], l1_test, psnr_test))
