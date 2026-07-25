@@ -1,3 +1,7 @@
+# RaceColumn Metal port (M3.5): route hard-coded CUDA to Apple MPS. Must
+# precede every import that touches the device. See train.py / M3_ROADMAP §M3.5.
+import mps_compat  # noqa: F401  (side-effecting: patches torch for MPS)
+
 import imageio
 import numpy as np
 import torch
