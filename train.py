@@ -275,11 +275,9 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
                     densify_threshold = opt.densify_grad_threshold_fine_init - iteration*(opt.densify_grad_threshold_fine_init - opt.densify_grad_threshold_after)/(opt.densify_until_iter )  
                 if  iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0 and gaussians.get_xyz.shape[0]<360000:
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
-                    
                     gaussians.densify(densify_threshold, opacity_threshold, scene.cameras_extent, size_threshold, 5, 5, scene.model_path, iteration, stage)
                 if  iteration > opt.pruning_from_iter and iteration % opt.pruning_interval == 0 and gaussians.get_xyz.shape[0]>200000:
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
-
                     gaussians.prune(densify_threshold, opacity_threshold, scene.cameras_extent, size_threshold)
                     
                 # if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0 :
@@ -294,6 +292,16 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
 
             # Optimizer step
             if iteration < opt.iterations:
+                # RaceColumn (M4): clip gradients before stepping. The MPS
+                # training diverges to NaN in the fine stage once the point
+                # count grows (~40k), from a few gaussians whose grads
+                # explode; clipping the global norm keeps it stable without
+                # the disruptive os.execv restart. Also zero any non-finite
+                # grads defensively.
+                _params = [p for grp in gaussians.optimizer.param_groups for p in grp['params'] if p.grad is not None]
+                for p in _params:
+                    torch.nan_to_num_(p.grad, nan=0.0, posinf=0.0, neginf=0.0)
+                torch.nn.utils.clip_grad_norm_(_params, max_norm=1.0)
                 gaussians.optimizer.step()
                 gaussians.optimizer.zero_grad(set_to_none = True)
 
